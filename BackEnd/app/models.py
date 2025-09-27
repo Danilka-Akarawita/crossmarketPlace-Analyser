@@ -11,25 +11,72 @@ class Currency(str, Enum):
 class AvailabilityStatus(str, Enum):
     IN_STOCK = "in_stock"
     OUT_OF_STOCK = "out_of_stock"
-    PRE_ORDER = "pre_order"
-    LIMITED = "limited"
+
 
 class Brand(str, Enum):
     LENOVO = "lenovo"
     HP = "hp"
 
 class TechnicalSpecs(BaseModel):
-    processor: Optional[str] = None
+    # Core
+    processor_family: Optional[str] = None
+    processor_models: Optional[List[str]] = None
+    processor: Optional[str] = None  # fallback (single-line parse)
+    
+    # Memory
     memory: Optional[str] = None
+    max_memory: Optional[str] = None
+    memory_type: Optional[str] = None
+    
+    # Storage
     storage: Optional[str] = None
+    max_storage: Optional[str] = None
+    storage_types: Optional[List[str]] = None
+    
+    # Display
     display: Optional[str] = None
+    display_options: Optional[List[str]] = None
+    
+    # Graphics
     graphics: Optional[str] = None
+    graphics_options: Optional[List[str]] = None
+    
+    # Operating System
     operating_system: Optional[str] = None
+    os_options: Optional[List[str]] = None
+    
+    # Battery & Power
     battery: Optional[str] = None
+    battery_options: Optional[List[str]] = None
+    battery_life: Optional[List[str]] = None
+    power_adapter: Optional[List[str]] = None
+    
+    # Design
     weight: Optional[str] = None
     dimensions: Optional[str] = None
+    case_colors: Optional[List[str]] = None
+    case_material: Optional[str] = None
+    
+    # Connectivity
     ports: Optional[List[str]] = None
     wireless: Optional[List[str]] = None
+    ethernet: Optional[str] = None
+    
+    # Audio / Camera
+    speakers: Optional[str] = None
+    microphone: Optional[str] = None
+    camera_options: Optional[List[str]] = None
+    
+    # Security
+    security_chip: Optional[str] = None
+    fingerprint_reader: Optional[bool] = None
+    windows_hello: Optional[bool] = None
+    
+    # Certifications & Sustainability
+    green_certifications: Optional[List[str]] = None
+    mil_certification: Optional[str] = None
+    environmental_materials: Optional[List[str]] = None
+
 
 class PriceHistory(BaseModel):
     price: float
@@ -70,6 +117,7 @@ class Product(BaseModel):
     
     # Metadata
     source_urls: List[str] = []
+    embedding: Optional[List[float]] = None
     last_updated: datetime = Field(default_factory=datetime.utcnow)
     price_history: List[PriceHistory] = []
 
