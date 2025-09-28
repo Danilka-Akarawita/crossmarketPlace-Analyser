@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import uuid
 from fastapi import Body, FastAPI, HTTPException, Query, Depends
@@ -26,14 +27,30 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
 # CORS middleware
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["http://localhost:3000"],  # Next.js frontend
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
+default_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3003",
+    "http://127.0.0.1:3003",
+]
+frontend_origins = os.getenv("FRONTEND_ORIGINS")
+allow_origins = (
+    [origin.strip() for origin in frontend_origins.split(",") if origin.strip()]
+    if frontend_origins
+    else default_origins
+)
+allow_origin_regex = os.getenv("FRONTEND_ORIGIN_REGEX")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins,
+    allow_origin_regex=allow_origin_regex,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Dependency injection
@@ -294,6 +311,7 @@ async def process_query(request: QueryRequest = Body(...)):
         session_service = MongoSessionService(collection=session_collection)
         APP_NAME = "LaptopIntelligence"
 
+    
         try:
             llm_service = get_llm_service()
             adk_runner = llm_service.create_base_agent(APP_NAME, session_service)
@@ -301,6 +319,16 @@ async def process_query(request: QueryRequest = Body(...)):
 
         except Exception as e:
             print(f"Failed to create adk_runner: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to initialize LLM runner. Check server logs for details.",
+            )
+
+        if adk_runner is None:
+            raise HTTPException(
+                status_code=500,
+                detail="LLM runner was not created successfully.",
+            )
 
         session_id = request.session_id or str(uuid.uuid4())
         print(f"Using session_id: {session_id}")
@@ -384,3 +412,9 @@ async def process_query(request: QueryRequest = Body(...)):
         return JSONResponse(
             status_code=500, content={"detail": f"Internal Server Error: {str(e)}"}
         )
+
+
+@app.options("/chat")
+async def chat_preflight_handler():
+    """Handle CORS preflight requests for the chat endpoint."""
+    return JSONResponse(status_code=200, content={"ok": True})
