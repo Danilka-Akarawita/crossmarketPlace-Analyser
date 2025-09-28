@@ -1,20 +1,28 @@
 import re
+import uuid
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
+
+from fastapi.responses import JSONResponse
+from services import MongoSessionService
+from pydantic import BaseModel
 from llm_service import LLMService
 from pdf_parser import CANONICAL_PDFS, PDFParser
+from utils import call_agent_async, add_user_query_to_history
 import asyncio
+
 # from llm_service import LLMService
 from models import Product, RecommendationRequest, Brand
 from database import mongodb
 from scraperAbans import LenovoScraper
+from google.genai.types import Content, Part
 
 
 app = FastAPI(
     title="Laptop Intelligence API",
     description="Cross-marketplace laptop and review intelligence platform",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # CORS middleware
@@ -26,15 +34,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Dependency injection
 def get_llm_service():
     return LLMService()
+
 
 @app.on_event("startup")
 async def startup_event():
     await mongodb.connect()
     # Initialize with canonical data
-    await initialize_canonical_data()
+    # await initialize_c anonical_data()
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -42,7 +53,9 @@ async def shutdown_event():
 
 
 async def save_product_with_embedding(product_data: dict, llm_service: LLMService):
-    text_to_embed = f"{product_data['canonical_name']} {product_data['technical_specs']}"
+    text_to_embed = (
+        f"{product_data['canonical_name']} {product_data['technical_specs']}"
+    )
     embedding = await llm_service.get_embedding(text_to_embed)
     product_data["embedding"] = embedding
     await mongodb.database.products.insert_one(product_data)
@@ -54,7 +67,7 @@ async def initialize_canonical_data():
     scraper = None
 
     try:
-        
+
         scraper = LenovoScraper()
         scraper.setup_driver()
 
@@ -93,16 +106,20 @@ async def initialize_canonical_data():
                     scraped = scraper.search_and_scrape(product_key)
                     print(f"Scraped data: {scraped}")
                     review_count_raw = scraped.get("review_count", "0")  # e.g. "(1)"
-                    review_count_clean = int(re.sub(r"[^\d]", "", review_count_raw))  # removes parentheses or other chars
+                    review_count_clean = int(
+                        re.sub(r"[^\d]", "", review_count_raw)
+                    )  # removes parentheses or other chars
 
                     if scraped:
-                        product_data.update({
-                            "current_price": scraped.get("price") or 0.0,
-                            "availability": scraped.get("in_stock"),
-                            "review_count": review_count_clean,
-                            "average_rating": float(scraped.get("rating") or 0.0),
-                            "specs_live": scraped.get("specs"),
-                        })
+                        product_data.update(
+                            {
+                                "current_price": scraped.get("price") or 0.0,
+                                "availability": scraped.get("in_stock"),
+                                "review_count": review_count_clean,
+                                "average_rating": float(scraped.get("rating") or 0.0),
+                                "specs_live": scraped.get("specs"),
+                            }
+                        )
                         print(f"Scraped live data for {product_key}: {scraped}")
                 else:
                     print(f"Skipping live scrape for {product_key} (not Lenovo)")
@@ -123,9 +140,11 @@ async def initialize_canonical_data():
 
 # API Endpoints
 
+
 @app.get("/")
 async def root():
     return {"message": "Laptop Intelligence API v1.0"}
+
 
 @app.get("/products", response_model=List[Product])
 async def get_products(
@@ -134,7 +153,7 @@ async def get_products(
     max_price: Optional[str] = None,
     min_rating: Optional[str] = None,
     skip: int = 0,
-    limit: int = 50
+    limit: int = 50,
 ):
     """Get products with filtering and pagination"""
     query = {}
@@ -147,8 +166,7 @@ async def get_products(
             return float(value.strip())
         except Exception:
             raise HTTPException(
-                status_code=400,
-                detail=f"Invalid value for {field_name}: {value}"
+                status_code=400, detail=f"Invalid value for {field_name}: {value}"
             )
 
     min_price = to_float(min_price, "min_price")
@@ -184,3 +202,124 @@ async def get_product(product_id: str):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "database": "connected"}
+
+
+class QueryRequest(BaseModel):
+    query: str
+    user_id: str
+    session_id: str
+
+
+@app.post("/chat")
+async def process_query(request: QueryRequest):
+    try:
+        print(
+            f"==> New /chat call | session_id: {request.session_id or 'new'} | query: {request.query}"
+        )
+
+        query_text = request.query
+        current_date = ""
+        if "ChatSessions" not in await mongodb.database.list_collection_names():
+            print("Creating collection 'ChatSessions'...")
+            await mongodb.database.create_collection("ChatSessions")
+        # Session collection inside your main db
+        session_collection = mongodb.database["ChatSessions"]
+        session_collection.create_index(
+            [("session_id", 1), ("user_id", 1), ("app_name", 1)],
+            name="session_lookup_index",
+            background=True,
+        )
+
+        session_service = MongoSessionService(collection=session_collection)
+        APP_NAME = "LaptopIntelligence"
+
+        try:
+            llm_service = get_llm_service()
+            adk_runner = llm_service.create_base_agent(APP_NAME, session_service)
+
+        except Exception as e:
+            print(f"Failed to create adk_runner: {e}")
+
+        session_id = request.session_id or str(uuid.uuid4())
+
+        session = await session_service.get_session(
+            app_name=APP_NAME,
+            user_id=request.user_id,
+            session_id=session_id,
+        )
+
+        if session is None:
+            # Create fresh session if not exists
+            await session_service.create_session(
+                app_name=APP_NAME,
+                user_id=request.user_id,
+                session_id=session_id,
+                state={
+                    "interaction_history": [],
+                    "user_query": query_text,
+                    "current_date": current_date,
+                },
+            )
+
+            # Refresh to get new session
+            session = await session_service.get_session(
+                app_name=APP_NAME,
+                user_id=request.user_id,
+                session_id=session_id,
+            )
+        else:
+            session_state = session.state.copy()
+            session_state.update(
+                {
+                    "user_query": query_text,
+                    "current_date": current_date,
+                }
+            )
+
+            await session_service.create_session(
+                app_name=APP_NAME,
+                user_id=request.user_id,
+                session_id=session_id,
+                state=session_state,
+            )
+
+        print("Session state:", session.state, "app_name:", APP_NAME)
+        await add_user_query_to_history(
+            session_service, APP_NAME, request.user_id, session_id, query_text
+        )
+
+        # Construct user message
+        user_message = Content(role="user", parts=[Part(text=query_text)])
+        print(">>> Final company_id passed to agent:", session.state.get("company_id"))
+        full_response = await call_agent_async(
+            runner=adk_runner,
+            user_id=request.user_id,
+            session_id=session_id,
+            query=query_text,
+        )
+        print(
+            f"[ logger ] Session state:",
+            session.state,
+            "app_name:",
+            APP_NAME,
+            "user_query",
+            query_text,
+            "full response:",
+            full_response,
+        )
+        return {"answer": full_response}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        return JSONResponse(
+            status_code=500, content={"detail": f"Internal Server Error: {str(e)}"}
+        )
+
+
+# if __name__ == "__main__":
+#     import uvicorn
+#     print("Registered routes:")
+#     for route in app.routes:
+#         print(route.path, route.methods)
+#     uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
