@@ -1,6 +1,6 @@
 import re
 import uuid
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import Body, FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
 
@@ -26,13 +26,13 @@ app = FastAPI(
 )
 
 # CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Next.js frontend
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["http://localhost:3000"],  # Next.js frontend
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 
 # Dependency injection
@@ -210,8 +210,8 @@ class QueryRequest(BaseModel):
     session_id: str
 
 
-@app.post("/chat")
-async def process_query(request: QueryRequest):
+@app.post("/chat", response_model=dict)
+async def process_query(request: QueryRequest= Body(...)):
     try:
         print(
             f"==> New /chat call | session_id: {request.session_id or 'new'} | query: {request.query}"
@@ -317,9 +317,3 @@ async def process_query(request: QueryRequest):
         )
 
 
-# if __name__ == "__main__":
-#     import uvicorn
-#     print("Registered routes:")
-#     for route in app.routes:
-#         print(route.path, route.methods)
-#     uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
