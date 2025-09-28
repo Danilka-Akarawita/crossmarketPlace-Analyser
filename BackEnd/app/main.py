@@ -39,28 +39,6 @@ app = FastAPI(
 def get_llm_service():
     return LLMService()
 
-
-@app.on_event("startup")
-async def startup_event():
-    await mongodb.connect()
-    # Initialize with canonical data
-    # await initialize_c anonical_data()
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    await mongodb.disconnect()
-
-
-async def save_product_with_embedding(product_data: dict, llm_service: LLMService):
-    text_to_embed = (
-        f"{product_data['canonical_name']} {product_data['technical_specs']}"
-    )
-    embedding = await llm_service.get_embedding(text_to_embed)
-    product_data["embedding"] = embedding
-    await mongodb.database.products.insert_one(product_data)
-
-
 async def initialize_canonical_data():
     """Initialize database with canonical PDF specs and scrape live data"""
     pdf_parser = PDFParser()
@@ -125,8 +103,8 @@ async def initialize_canonical_data():
                     print(f"Skipping live scrape for {product_key} (not Lenovo)")
 
                 # Embed text with LLM if needed
-                # llm_service = get_llm_service()
-                # await save_product_with_embedding(product_data, llm_service)
+                llm_service = get_llm_service()
+                await save_product_with_embedding(product_data, llm_service)
 
                 await mongodb.database.products.insert_one(product_data)
 
@@ -136,6 +114,30 @@ async def initialize_canonical_data():
     finally:
         if scraper:
             scraper.close_driver()
+
+
+
+@app.on_event("startup")
+async def startup_event():
+    await mongodb.connect()
+    # Initialize with canonical data
+    await initialize_canonical_data()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await mongodb.disconnect()
+
+
+async def save_product_with_embedding(product_data: dict, llm_service: LLMService):
+    text_to_embed = (
+        f"{product_data['canonical_name']} {product_data['technical_specs']}"
+    )
+    embedding = await llm_service.get_embedding(text_to_embed)
+    product_data["embedding"] = embedding
+    await mongodb.database.products.insert_one(product_data)
+
+
 
 
 # API Endpoints
@@ -219,37 +221,44 @@ async def process_query(request: QueryRequest= Body(...)):
 
         query_text = request.query
         current_date = ""
-        if "ChatSessions" not in await mongodb.database.list_collection_names():
-            print("Creating collection 'ChatSessions'...")
-            await mongodb.database.create_collection("ChatSessions")
-        # Session collection inside your main db
-        session_collection = mongodb.database["ChatSessions"]
-        session_collection.create_index(
-            [("session_id", 1), ("user_id", 1), ("app_name", 1)],
-            name="session_lookup_index",
-            background=True,
-        )
-
+        try:
+            if "ChatSessions" not in await mongodb.database.list_collection_names():
+                print("Creating collection 'ChatSessions'...")
+                await mongodb.database.create_collection("ChatSessions")
+            # Session collection inside your main db
+            session_collection = mongodb.database["ChatSessions"]
+            session_collection.create_index(
+                [("session_id", 1), ("user_id", 1), ("app_name", 1)],
+                name="session_lookup_index",
+                background=True,
+            )
+            print("Session collection created with index.")
+        except Exception as e:
+            print(f"Error creating session collection: {e}")
+     
         session_service = MongoSessionService(collection=session_collection)
         APP_NAME = "LaptopIntelligence"
 
         try:
             llm_service = get_llm_service()
             adk_runner = llm_service.create_base_agent(APP_NAME, session_service)
+            print("ADK Runner created successfully.", adk_runner)
 
         except Exception as e:
             print(f"Failed to create adk_runner: {e}")
 
         session_id = request.session_id or str(uuid.uuid4())
+        print(f"Using session_id: {session_id}")
 
         session = await session_service.get_session(
             app_name=APP_NAME,
             user_id=request.user_id,
             session_id=session_id,
         )
-
+        print("Session retrieved:", session)
         if session is None:
             # Create fresh session if not exists
+            print("Creating new session...")
             await session_service.create_session(
                 app_name=APP_NAME,
                 user_id=request.user_id,
@@ -284,8 +293,9 @@ async def process_query(request: QueryRequest= Body(...)):
             )
 
         print("Session state:", session.state, "app_name:", APP_NAME)
+        
         await add_user_query_to_history(
-            session_service, APP_NAME, request.user_id, session_id, query_text
+            session_service, APP_NAME, request.user_id, session_id, query_text,
         )
 
         # Construct user message

@@ -1,15 +1,15 @@
 import uuid
 from google.adk.sessions.base_session_service import BaseSessionService, ListSessionsResponse
 from google.adk.sessions.session import Session
-from pymongo.collection import Collection
+from motor.motor_asyncio import AsyncIOMotorCollection
 from typing import Optional
 from datetime import datetime
 
 
 class MongoSessionService(BaseSessionService):
-    """A session service that persists session state in MongoDB."""
+    """A session service that persists session state in MongoDB asynchronously using Motor."""
 
-    def _init_(self, collection: Collection):
+    def __init__(self, collection: AsyncIOMotorCollection):
         self.collection = collection
         print("MongoSessionService initialized.")
 
@@ -22,7 +22,7 @@ class MongoSessionService(BaseSessionService):
             "session_id": session_id,
         }
 
-        session_doc = self.collection.find_one(query)
+        session_doc = await self.collection.find_one(query)  # ✅ Async call
 
         if session_doc:
             return Session(
@@ -44,8 +44,6 @@ class MongoSessionService(BaseSessionService):
         state: Optional[dict] = None,
     ) -> Session:
         session_id = session_id or str(uuid.uuid4())
-
-    
         doc = {
             "session_id": session_id,
             "app_name": app_name,
@@ -54,12 +52,11 @@ class MongoSessionService(BaseSessionService):
             "last_update_time": datetime.utcnow().timestamp(),
         }
 
-        self.collection.update_one(
+        await self.collection.update_one(
             {"session_id": session_id, "user_id": user_id, "app_name": app_name},
             {"$set": doc},
             upsert=True,
         )
-        
 
         return Session(
             id=session_id,
@@ -76,7 +73,7 @@ class MongoSessionService(BaseSessionService):
         query = {"app_name": app_name, "user_id": user_id}
         sessions = []
 
-        for doc in self.collection.find(query):
+        async for doc in self.collection.find(query):  # ✅ Async iteration
             sessions.append(
                 Session(
                     id=doc["session_id"],
@@ -93,7 +90,7 @@ class MongoSessionService(BaseSessionService):
     async def delete_session(
         self, *, app_name: str, user_id: str, session_id: str
     ) -> None:
-        self.collection.delete_one(
+        await self.collection.delete_one(
             {
                 "app_name": app_name,
                 "user_id": user_id,
