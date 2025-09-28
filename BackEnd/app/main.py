@@ -1,3 +1,4 @@
+import json
 import re
 import uuid
 from fastapi import Body, FastAPI, HTTPException, Query, Depends
@@ -17,7 +18,7 @@ from models import Product, RecommendationRequest, Brand
 from database import mongodb
 from scraperAbans import LenovoScraper
 from google.genai.types import Content, Part
-
+from llm_service import LLMService
 
 app = FastAPI(
     title="Laptop Intelligence API",
@@ -38,6 +39,7 @@ app = FastAPI(
 # Dependency injection
 def get_llm_service():
     return LLMService()
+
 
 async def initialize_canonical_data():
     """Initialize database with canonical PDF specs and scrape live data"""
@@ -116,12 +118,11 @@ async def initialize_canonical_data():
             scraper.close_driver()
 
 
-
 @app.on_event("startup")
 async def startup_event():
     await mongodb.connect()
     # Initialize with canonical data
-    await initialize_canonical_data()
+    # await initialize_canonical_data()
 
 
 @app.on_event("shutdown")
@@ -136,8 +137,6 @@ async def save_product_with_embedding(product_data: dict, llm_service: LLMServic
     embedding = await llm_service.get_embedding(text_to_embed)
     product_data["embedding"] = embedding
     await mongodb.database.products.insert_one(product_data)
-
-
 
 
 # API Endpoints
@@ -206,6 +205,62 @@ async def health_check():
     return {"status": "healthy", "database": "connected"}
 
 
+class SearchRequest(BaseModel):
+    query: str
+    limit: Optional[int] = 10
+    min_price: Optional[float] = None
+    max_price: Optional[float] = None
+
+
+@app.get("/search")
+async def search_products(request: SearchRequest):
+    """
+    Search products using MongoDB Atlas Search index and optional price filtering.
+    Excludes _id and embedding fields from results.
+    """
+    pipeline = [
+        {
+            "$search": {
+                "index": "default",
+                "text": {"query": request.query, "path": {"wildcard": "*"}},
+            }
+        }
+    ]
+    llm_service = get_llm_service()
+
+    # Apply price range filter if provided
+    price_filter = {}
+    if request.min_price is not None:
+        price_filter["$gte"] = request.min_price
+    if request.max_price is not None:
+        price_filter["$lte"] = request.max_price
+    if price_filter:
+        pipeline.append({"$match": {"current_price": price_filter}})
+
+    # Exclude _id and embedding fields
+    pipeline.append({"$project": {"_id": 0, "embedding": 0}})
+
+    # Limit results
+    pipeline.append({"$limit": request.limit or 10})
+
+    # Run aggregation
+    cursor = mongodb.database.products.aggregate(pipeline)
+    results = await cursor.to_list(length=request.limit or 10)
+
+    # Normalize technical_specs
+    for doc in results:
+        specs = doc.get("technical_specs", {})
+        for field in ["weight", "memory", "processor"]:
+            if field in specs and isinstance(specs[field], list):
+                specs[field] = specs[field][0]
+        doc["technical_specs"] = specs
+
+    raw_data = json.dumps(results, indent=2)
+    summary = await llm_service.summarize_text(raw_data)
+
+    return summary
+
+
 class QueryRequest(BaseModel):
     query: str
     user_id: str
@@ -213,7 +268,7 @@ class QueryRequest(BaseModel):
 
 
 @app.post("/chat", response_model=dict)
-async def process_query(request: QueryRequest= Body(...)):
+async def process_query(request: QueryRequest = Body(...)):
     try:
         print(
             f"==> New /chat call | session_id: {request.session_id or 'new'} | query: {request.query}"
@@ -235,7 +290,7 @@ async def process_query(request: QueryRequest= Body(...)):
             print("Session collection created with index.")
         except Exception as e:
             print(f"Error creating session collection: {e}")
-     
+
         session_service = MongoSessionService(collection=session_collection)
         APP_NAME = "LaptopIntelligence"
 
@@ -293,9 +348,13 @@ async def process_query(request: QueryRequest= Body(...)):
             )
 
         print("Session state:", session.state, "app_name:", APP_NAME)
-        
+
         await add_user_query_to_history(
-            session_service, APP_NAME, request.user_id, session_id, query_text,
+            session_service,
+            APP_NAME,
+            request.user_id,
+            session_id,
+            query_text,
         )
 
         # Construct user message
@@ -325,5 +384,3 @@ async def process_query(request: QueryRequest= Body(...)):
         return JSONResponse(
             status_code=500, content={"detail": f"Internal Server Error: {str(e)}"}
         )
-
-

@@ -26,14 +26,35 @@ class LLMService:
         # langchain embeddings return a list directly
         return await self.embedding_model.aembed_query(text)
 
+    async def summarize_text(self, text: str, max_tokens: int = 200) -> str:
+        """
+        Generate a concise summary of the given text using the LLM.
+
+        Args:
+            text: The input string to summarize.
+            max_tokens: Approximate maximum length of the summary.
+        Returns:
+            A string containing the summary.
+        """
+
+        # If text is very long, you might want to truncate or chunk it
+        prompt = (
+            "Please provide a concise summary of the following content:\n\n"
+            f"{text}\n\nSummary:"
+        )
+        print(f"prompt is {prompt}")
+        response = self.llm.invoke(prompt)
+        # agenerate returns a list of generations, pick the first one
+        summary = response.content
+        return summary
+
     def create_base_agent(self, app_name: str, session_service):
         """Create the base LLM agent wrapped in a Runner."""
         try:
             model = LiteLlm(
                 model="gpt-4.1-nano",
                 temperature=0.3,
-                api_key="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",
-
+                api_key="",
             )
 
             base_agent = LlmAgent(
