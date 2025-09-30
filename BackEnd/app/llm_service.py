@@ -39,7 +39,7 @@ Instructions:
 
 step:
 1. Analyze the user query and context.
-2.If the price_range is an empty dict, it means the user has not specified any price range,ask the user to specify a price range.
+2.If the price_range is an empty dict, it means the user has not specified any price range,strctly ask the user to specify a price range.
 3.Invoke the `search_products_tool` to search for laptops within the specified price range and get the detailed laptop summary
 4.Provide suitable recommendations or answers based on the context and interaction_history.
 
@@ -54,15 +54,24 @@ Narrow:
 """
 class LLMService:
     def __init__(self):
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY is not set")
+
+        chat_model = os.getenv("OPENAI_CHAT_MODEL", "gpt-4.1-nano")
+        embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+
         self.llm = ChatOpenAI(
-            model_name="gpt-4.1-nano",
+            model_name=chat_model,
             temperature=0.3,
-            openai_api_key="",
+            openai_api_key=api_key,
         )
         self.embedding_model = OpenAIEmbeddings(
-            model="text-embedding-3-small",
-            openai_api_key="",
+            model=embedding_model,
+            openai_api_key=api_key,
         )
+        self._api_key = api_key
+        self._chat_model = chat_model
 
     async def get_embedding(self, text: str) -> List[float]:
         """Generate vector embeddings for given text."""
@@ -107,11 +116,10 @@ class LLMService:
             print("Creating base agent...", app_name)
             print(f"Session service: {session_service}")
             
-            
             model = LiteLlm(
-                model="gpt-4.1-nano",
+                model=self._chat_model,
                 temperature=0.3,
-                api_key="",
+                api_key=self._api_key,
             )
             
             base_agent = LlmAgent(

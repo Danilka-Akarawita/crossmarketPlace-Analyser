@@ -17,7 +17,7 @@ import asyncio
 # from llm_service import LLMService
 from models import Product, RecommendationRequest, Brand
 from database import mongodb
-from scraperAbans import LenovoScraper
+from scraperAbans import LenovoScraper, HpScraper
 from google.genai.types import Content, Part
 from llm_service import LLMService
 
@@ -65,12 +65,12 @@ scheduler = AsyncIOScheduler()
 async def scheduled_scrape():
     print("⏳ Running scheduled Lenovo scrape...")
     try:
-        await initialize_canonical_data(sheduler=True)
+        await initialize_canonical_data(scheduler=True)
         print(" Scrape completed successfully.")
     except Exception as e:
         print(f" Scrape failed: {e}")
 
-async def initialize_canonical_data(sheduler: bool = False):
+async def initialize_canonical_data(scheduler: bool = False):
     """Initialize database with canonical PDF specs and scrape live data"""
     pdf_parser = PDFParser()
     scraper = None
@@ -78,6 +78,7 @@ async def initialize_canonical_data(sheduler: bool = False):
     try:
 
         scraper = LenovoScraper()
+        scraperHp=HpScraper()
         scraper.setup_driver()
 
         for product_key, pdf_url in CANONICAL_PDFS.items():
@@ -112,7 +113,7 @@ async def initialize_canonical_data(sheduler: bool = False):
                 # Scrape live data from Lenovo site (only if Lenovo product)
                 if "lenovo" in product_key:
                     print(f"Scraping live data for {product_key}...")
-                    scraped = scraper.search_and_scrape(product_key,sheduler= sheduler)
+                    scraped = scraper.search_and_scrape(product_key,scheduler= scheduler)
                     print(f"Scraped data: {scraped}")
                     review_count_raw = scraped.get("review_count", "0")  # e.g. "(1)"
                     review_count_clean = int(
@@ -131,7 +132,25 @@ async def initialize_canonical_data(sheduler: bool = False):
                         )
                         print(f"Scraped live data for {product_key}: {scraped}")
                 else:
-                    print(f"Skipping live scrape for {product_key} (not Lenovo)")
+                    print(f"Scraping live data for {product_key}...")
+                    scraped = scraperHp.search_and_scrape(product_key,scheduler= scheduler)
+                    print(f"Scraped data: {scraped}")
+                    review_count_raw = scraped.get("review_count", "0")  # e.g. "(1)"
+                    review_count_clean = int(
+                        re.sub(r"[^\d]", "", review_count_raw)
+                    )  # removes parentheses or other chars
+
+                    if scraped:
+                        product_data.update(
+                            {
+                                "current_price": scraped.get("price") or 0.0,
+                                "availability": scraped.get("in_stock"),
+                                "review_count": review_count_clean,
+                                "average_rating": float(scraped.get("rating") or 0.0),
+                                "specs_live": scraped.get("specs"),
+                            }
+                        )
+                        print(f"Scraped live data for {product_key}: {scraped}")
 
                 # Embed text with LLM if needed
                 llm_service = get_llm_service()
@@ -151,8 +170,8 @@ async def initialize_canonical_data(sheduler: bool = False):
 async def startup_event():
     await mongodb.connect()
     # Initialize with canonical data
-    # await initialize_canonical_data()
-    sheduler.start()
+    await initialize_canonical_data()
+    scheduler.start()
     print("Scheduler started. Canonical data will be refreshed every 12 hours.")
 
 

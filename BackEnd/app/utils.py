@@ -10,6 +10,7 @@ MAX_HISTORY_ITEMS=10
 async def update_interaction_history(session_service, app_name, user_id, session_id, entry: dict=None,price_range: dict = None,context: str = None):
     """Update the interaction history for a session."""
     try:
+        print(f"Updating interaction history for session {session_id} of user {user_id} in app {app_name} price_range: {price_range} context: {context}")
         session = await session_service.get_session(
             app_name=app_name, user_id=user_id, session_id=session_id
         )
@@ -17,27 +18,32 @@ async def update_interaction_history(session_service, app_name, user_id, session
         if not session:
             raise ValueError("Session not found.")
 
-        history = session.state.get("interaction_history", [])
-        entry["timestamp"] = entry.get("timestamp", datetime.utcnow().isoformat())
-        history.append(entry)
-        
-        if len(history) > MAX_HISTORY_ITEMS:
-            history = history[-MAX_HISTORY_ITEMS:]
+        history = list(session.state.get("interaction_history", []))
+
+        if entry is not None:
+            if not isinstance(entry, dict):
+                raise TypeError("entry must be a dict when provided")
+
+            entry_with_timestamp = entry.copy()
+            entry_with_timestamp.setdefault("timestamp", datetime.utcnow().isoformat())
+            history.append(entry_with_timestamp)
+
+            if len(history) > MAX_HISTORY_ITEMS:
+                history = history[-MAX_HISTORY_ITEMS:]
 
         new_state = session.state.copy()
         new_state["interaction_history"] = history
-        
-        
+
         if price_range is not None:
-            price_range_details = new_state.get("price_range", {})
+            price_range_details = new_state.get("price_range", {}).copy()
             price_range_details.update(price_range)
             new_state["price_range"] = price_range_details
-        
+
         if context is not None:
             new_state["context"] = context
-            
+
         print(f"Updated session state: {new_state}")
-        
+
         await session_service.create_session(
             app_name=app_name,
             user_id=user_id,
