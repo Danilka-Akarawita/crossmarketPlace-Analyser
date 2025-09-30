@@ -28,7 +28,7 @@ class BaseScraper:
 class LenovoScraper(BaseScraper):
     BASE_URL = "https://www.lenovo.com"
 
-    def search_and_scrape(self, model_name: str) -> Optional[Dict]:
+    def search_and_scrape(self, model_name: str,sheduler: bool) -> Optional[Dict]:
         self.driver.get(f"{self.BASE_URL}/us/en")
         
         # Wait for search box
@@ -47,7 +47,10 @@ class LenovoScraper(BaseScraper):
             print("Navigating to:", url)
             time.sleep(3)  # wait for JS content to load
 
-            return self.scrape_product_page()
+            if sheduler:
+                return self.scrape_price_and_reviews()
+            else:
+                return self.scrape_product_page()
         except:
             print("No products found for model:", model_name)
             return None
@@ -108,6 +111,50 @@ class LenovoScraper(BaseScraper):
             "review_count": review_count,
             "specs": specs,
             "in_stock": availability
+        }
+    
+    def scrape_price_and_reviews(self) -> Dict:
+        """Light scrape: only price, discount, rating, review count, availability."""
+        time.sleep(2)  # let JS load
+        soup = BeautifulSoup(self.driver.page_source, "html.parser")
+
+      
+        try:
+            price_span = soup.find("span", class_="price")
+            price = price_span.text.strip() if price_span else None
+            discount_span = soup.find("span", class_="price-save-mt")
+            discount = discount_span.text.strip() if discount_span else None
+        except:
+            price = discount = None
+
+        # Rating + reviews
+        try:
+            rating = soup.select_one(".card-review-inline .bv_text").get_text(strip=True)
+        except:
+            rating = None
+        try:
+            review_count = soup.select_one(
+                ".card-review-inline .bv_numReviews_component_container .bv_text"
+            ).get_text(strip=True)
+        except:
+            review_count = None
+
+        # Stock
+        try:
+            stock_button = soup.select_one("button.buyNowBtn, button.outOfStock")
+            if stock_button and "out of stock" in stock_button.text.lower():
+                availability = AvailabilityStatus.OUT_OF_STOCK.value
+            else:
+                availability = AvailabilityStatus.IN_STOCK.value
+        except:
+            availability = AvailabilityStatus.OUT_OF_STOCK.value
+
+        return {
+            "price": price,
+            "discount": discount,
+            "rating": rating,
+            "review_count": review_count,
+            "in_stock": availability,
         }
 
 

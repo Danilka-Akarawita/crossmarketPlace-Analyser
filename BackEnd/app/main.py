@@ -5,7 +5,7 @@ import uuid
 from fastapi import Body, FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
-
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi.responses import JSONResponse
 from services import MongoSessionService
 from pydantic import BaseModel
@@ -58,7 +58,19 @@ def get_llm_service():
     return LLMService()
 
 
-async def initialize_canonical_data():
+scheduler = AsyncIOScheduler()
+
+# Background job to refresh Lenovo data
+@scheduler.scheduled_job("interval", hours=12)
+async def scheduled_scrape():
+    print("⏳ Running scheduled Lenovo scrape...")
+    try:
+        await initialize_canonical_data(sheduler=True)
+        print(" Scrape completed successfully.")
+    except Exception as e:
+        print(f" Scrape failed: {e}")
+
+async def initialize_canonical_data(sheduler: bool = False):
     """Initialize database with canonical PDF specs and scrape live data"""
     pdf_parser = PDFParser()
     scraper = None
@@ -100,7 +112,7 @@ async def initialize_canonical_data():
                 # Scrape live data from Lenovo site (only if Lenovo product)
                 if "lenovo" in product_key:
                     print(f"Scraping live data for {product_key}...")
-                    scraped = scraper.search_and_scrape(product_key)
+                    scraped = scraper.search_and_scrape(product_key,sheduler= sheduler)
                     print(f"Scraped data: {scraped}")
                     review_count_raw = scraped.get("review_count", "0")  # e.g. "(1)"
                     review_count_clean = int(
@@ -140,6 +152,8 @@ async def startup_event():
     await mongodb.connect()
     # Initialize with canonical data
     # await initialize_canonical_data()
+    sheduler.start()
+    print("Scheduler started. Canonical data will be refreshed every 12 hours.")
 
 
 @app.on_event("shutdown")
