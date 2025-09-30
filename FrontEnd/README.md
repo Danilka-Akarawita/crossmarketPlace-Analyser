@@ -15,8 +15,8 @@ Once the dev server is up, visit http://localhost:3000 and start chatting. The f
 
 ## Features
 
-- Polished assistant experience with suggestions, timestamps, and gradient styling
-- User and session identifiers are configurable from the UI for quick testing
+- Polished assistant experience with suggestions, timestamps, gradient styling, and a live typing indicator
+- Automatic session identifiers for clean conversations without extra input fields
 - Clear surface for backend errors and the active API endpoint
 - No authentication required—ideal for demos or internal tooling
 

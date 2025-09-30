@@ -236,12 +236,12 @@ async def search_products(request: SearchRequest):
     Excludes _id and embedding fields from results.
     """
     pipeline = [
-        {
-            "$search": {
-                "index": "default",
-                "text": {"query": request.query, "path": {"wildcard": "*"}},
-            }
-        }
+        # {
+        #     "$search": {
+        #         "index": "default",
+        #         "text": {"query": request.query, "path": {"wildcard": "*"}},
+        #     }
+        # }
     ]
     llm_service = get_llm_service()
 
@@ -262,8 +262,9 @@ async def search_products(request: SearchRequest):
 
     # Run aggregation
     cursor = mongodb.database.products.aggregate(pipeline)
+    print("curser",cursor)
     results = await cursor.to_list(length=request.limit or 10)
-
+    print("results",results)
     # Normalize technical_specs
     for doc in results:
         specs = doc.get("technical_specs", {})
@@ -350,6 +351,11 @@ async def process_query(request: QueryRequest = Body(...)):
                     "interaction_history": [],
                     "user_query": query_text,
                     "current_date": current_date,
+                    "price_range": {},
+                    "context": "",
+                    "session_id":session_id,
+                    "user_id":request.user_id,
+                    "app_name":APP_NAME
                 },
             )
 
@@ -365,6 +371,7 @@ async def process_query(request: QueryRequest = Body(...)):
                 {
                     "user_query": query_text,
                     "current_date": current_date,
+                    
                 }
             )
 

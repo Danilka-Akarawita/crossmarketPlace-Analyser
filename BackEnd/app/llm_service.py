@@ -19,25 +19,38 @@ class ProductSearchResult(BaseModel):
 parser= PydanticOutputParser(pydantic_object=ProductSearchResult)
 
 
-prompttt="""
+base_agent_instruction="""
+Role: You are a helpful assistant provide accurate answers for laptop-related queries.
 
 query: {user_query}
+context: {context}
+price_range: {price_range}
+interaction_history: {interaction_history}
+session_id:{session_id}
+user_id:{user_id}
+app_name:{app_name}
 
-You are a helpful shopping assistant.
+Instructions:
+1.context contains tec spec summarization of laptops within the given price_range
+2.If the context is not empty, use it to answer the user's query.
+3.If the query mentioned about any price range, update the price_range using `search_products_tool`
+4.Tailor the response based on the interaction_history, which includes previous user queries and agent responses.
+5.Provide a concise answer to the user's query based on the context and interaction history.
 
-When the user asks about buying or comparing products,
--extract query, min_price, max_price from the user query if available.
-- call the tool `search_products_tool` with query, min_price, max_price} to get product data.
-- use the tool's "products" list to give product recommendations.
-- use the tool's response  string to give a concise natural-language answer.
-Always respond as :
-{
-  "answer": "<your helpful explanation>",
-  "quick_questions": ["<next thing they might ask>", "..."],
-  "products": [ ... ]  // from the tool when relevant
-}
+step:
+1. Analyze the user query and context.
+2.If the price_range is an empty dict, it means the user has not specified any price range,ask the user to specify a price range.
+3.Invoke the `search_products_tool` to search for laptops within the specified price range and get the detailed laptop summary
+4.Provide suitable recommendations or answers based on the context and interaction_history.
 
+End Goal:
+Provide a good customer care experience by understanding the user's needs and providing accurate, helpful responses.
 
+Narrow:
+1.Do not invoke the `search_products_tool` if the price_range is not empty or query does not mention about price range.
+2.do not use any tone or style that is not professional and helpful.
+3.Do not provide any information that is not related to the user's query or context.
+4.Do not provide any answer if the query is not realted to laptops or any laptop accessories.
 """
 class LLMService:
     def __init__(self):
@@ -67,11 +80,21 @@ class LLMService:
             A string containing the summary.
         """
 
-        # If text is very long, you might want to truncate or chunk it
-        prompt = (
-            "Please provide a concise summary of the following content:\n\n"
-            f"{text}\n\nSummary:"
-        )
+        prompt=f"""
+        
+        context: {text}
+        Instructions
+        Usually a laptop can be categorized as their intended purpose as bellow
+        1. General/Everyday Laptop - Uses for basic computing tasks (web browsing, email, word processing, video streaming, and light multitasking). features a mid-range processor (e.g., Intel Core i3/i5 or equivalent AMD Ryzen), 8GB, and SSD storage.
+        2. Office/Business Laptops - Professional work, presentations, data management, and secure remote access. Prioritizes reliability, robust security features (e.g., fingerprint readers, TPM chips), durable build quality, and often long battery life. features a mid-range to high-end processor (e.g., Intel Core i5/i7 or equivalent AMD Ryzen), 8GB or 16GB, and SSD storage.
+        3. Gaming Laptops - Performance for gaming is the focus. Built for the latest, most graphically intensive titles. features a high-end processor (e.g., Intel Core i5/i7 or equivalent AMD Ryzen), 16GB or more ram, dedicated GPU (eg. GeForce RTX 3050 Laptop GPU, AMD Radeon RX 7000M Laptop GPU) and NvMe or SSD storage.
+
+        Steps:
+        1. Identify  the context given
+        2. use the information in instruction to identify correct category/categories of the laptop
+        3. provide a summarize based on the category and the context provided
+
+        """
         print(f"prompt is {prompt}")
         response = self.llm.invoke(prompt)
         # agenerate returns a list of generations, pick the first one
@@ -98,7 +121,7 @@ class LLMService:
                     "Central coordinator that interprets user queries and manages "
                     "the conversation flow across the session."
                 ),
-                instruction=prompttt,
+                instruction=base_agent_instruction,
                 tools=[search_products_tool],
             )
 

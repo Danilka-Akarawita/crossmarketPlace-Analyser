@@ -12,8 +12,6 @@ type ChatMessage = {
   timestamp: number;
 };
 
-const DEFAULT_USER_ID = "guest-user";
-
 function safeRandomId() {
   if (typeof globalThis.crypto !== "undefined" && globalThis.crypto.randomUUID) {
     return globalThis.crypto.randomUUID();
@@ -45,8 +43,7 @@ function formatAssistantResponse(payload: unknown): string {
 export function ChatWindow() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
-  const [userId, setUserId] = useState(DEFAULT_USER_ID);
-  const [sessionId, setSessionId] = useState<string>("");
+  const [identity, setIdentity] = useState<string>("");
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -55,13 +52,13 @@ export function ChatWindow() {
   }, []);
 
   useEffect(() => {
-    setSessionId(safeRandomId());
+    setIdentity(safeRandomId());
   }, []);
 
   const resetConversation = useCallback(() => {
     setMessages([]);
     setErrorMessage(null);
-    setSessionId(safeRandomId());
+    setIdentity(safeRandomId());
   }, []);
 
   const appendMessage = useCallback((role: ChatRole, content: string) => {
@@ -90,10 +87,13 @@ export function ChatWindow() {
       setInputValue("");
       setIsSending(true);
 
+      const sessionKey = identity || safeRandomId();
+      setIdentity(sessionKey);
+
       const payload = {
         query: trimmed,
-        user_id: userId.trim() || DEFAULT_USER_ID,
-        session_id: sessionId || safeRandomId(),
+        user_id: sessionKey,
+        session_id: sessionKey,
       };
 
       try {
@@ -126,7 +126,7 @@ export function ChatWindow() {
         setIsSending(false);
       }
     },
-    [appendMessage, backendUrl, inputValue, sessionId, userId],
+    [appendMessage, backendUrl, identity, inputValue],
   );
 
   return (
@@ -135,8 +135,7 @@ export function ChatWindow() {
         <div>
           <h2 style={styles.title}>Laptop Intelligence</h2>
           <p style={styles.subtitle}>
-            Ask anything about specs, pricing, or availability and we’ll answer using your
-            marketplace data.
+            chat with a marketplace analyst 
           </p>
         </div>
         <button type="button" style={styles.resetButton} onClick={resetConversation}>
@@ -149,8 +148,7 @@ export function ChatWindow() {
           <div style={styles.placeholder}>
             <p style={styles.placeholderHeading}>Start the conversation</p>
             <p style={styles.placeholderBody}>
-              Try questions like “Find 16GB RAM laptops under $1,200” or “Compare ThinkPad
-              X1 Carbon with Dell XPS 13.”
+            Ask anything about specs, pricing, or availability and we’ll answer using your marketplace data.
             </p>
           </div>
         ) : (
@@ -195,20 +193,28 @@ export function ChatWindow() {
             );
           })
         )}
+        {isSending ? (
+          <div style={styles.messageBlock} key="assistant-typing">
+            <div style={styles.avatarColumn}>
+              <div style={{ ...styles.avatar, background: "#2563eb" }}>AI</div>
+            </div>
+            <article style={{ ...styles.messageShell, ...styles.assistantBubble }}>
+              <div style={styles.messageHeaderRow}>
+                <span style={styles.messageAuthor}>Laptop Intelligence</span>
+                <span style={styles.typingLabel}>typing…</span>
+              </div>
+              <div className="typing-dots">
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+              </div>
+            </article>
+          </div>
+        ) : null}
       </section>
 
       <form style={styles.composer} onSubmit={handleSubmit}>
-        <div style={styles.identityRow}>
-          <label style={styles.identityLabel}>
-            User ID
-            <input
-              style={styles.identityInput}
-              value={userId}
-              onChange={(event) => setUserId(event.target.value)}
-            />
-          </label>
-          <span style={styles.sessionTag}>Session: {sessionId}</span>
-        </div>
+        
         <div style={styles.composerRow}>
           <textarea
             style={styles.textArea}
@@ -230,9 +236,6 @@ export function ChatWindow() {
           </button>
         </div>
         <div style={styles.metaRow}>
-          <small>
-            Calling <code>{backendUrl}/chat</code>
-          </small>
           {errorMessage ? <small style={styles.errorText}>Last error: {errorMessage}</small> : null}
         </div>
       </form>
@@ -375,6 +378,11 @@ const styles: Record<string, CSSProperties> = {
     wordBreak: "break-word",
     hyphens: "auto",
   },
+  typingLabel: {
+    fontSize: "0.75rem",
+    color: "#94a3b8",
+    fontWeight: 500,
+  },
   timestamp: {
     display: "block",
     marginTop: "8px",
@@ -394,19 +402,6 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "space-between",
     gap: "12px",
     flexWrap: "wrap",
-  },
-  identityLabel: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    fontSize: "0.85rem",
-    color: "#475569",
-  },
-  identityInput: {
-    padding: "8px 12px",
-    borderRadius: "10px",
-    border: "1px solid rgba(148,163,184,0.5)",
-    fontSize: "0.95rem",
   },
   sessionTag: {
     fontSize: "0.8rem",

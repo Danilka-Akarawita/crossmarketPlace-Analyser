@@ -39,9 +39,7 @@ export default function HomePage() {
         <section style={pageStyles.hero}>
           <h1 style={pageStyles.heroTitle}>Laptop Intelligence Concierge</h1>
           <p style={pageStyles.heroSubtitle}>
-            Chat with a marketplace analyst that blends your MongoDB Atlas search results
-            and LLM summaries into concise recommendations. No sign-up required—type a
-            question below to begin.
+          Chat with a marketplace analyst that delivers concise product recommendations powered by AI
           </p>
         </section>
 

@@ -7,7 +7,7 @@ import asyncio
 AGENT_CALL_SEMAPHORE=asyncio.Semaphore(50)
 MAX_HISTORY_ITEMS=10
 
-async def update_interaction_history(session_service, app_name, user_id, session_id, entry: dict):
+async def update_interaction_history(session_service, app_name, user_id, session_id, entry: dict=None,price_range: dict = None,context: str = None):
     """Update the interaction history for a session."""
     try:
         session = await session_service.get_session(
@@ -27,7 +27,17 @@ async def update_interaction_history(session_service, app_name, user_id, session
         new_state = session.state.copy()
         new_state["interaction_history"] = history
         
-
+        
+        if price_range is not None:
+            price_range_details = new_state.get("price_range", {})
+            price_range_details.update(price_range)
+            new_state["price_range"] = price_range_details
+        
+        if context is not None:
+            new_state["context"] = context
+            
+        print(f"Updated session state: {new_state}")
+        
         await session_service.create_session(
             app_name=app_name,
             user_id=user_id,
