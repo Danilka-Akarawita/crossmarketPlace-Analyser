@@ -83,5 +83,14 @@ Laptop Intelligence combines a FastAPI backend and a Next.js frontend to analyze
 - MongoDB connection issues typically stem from IP allowlisting or missing credentials—confirm the URL and database name in `.env`.
 - For long-running scrapes, ensure the server has a display or configured driver for Selenium; headless Chrome is recommended in production.
 
+## Future Enhancements
+- Prompt caching layer to reduce latency and manage cost for repeated intents.
+- Conversation history summarization so sessions stay within token limits while retaining context.
+- Harden `/chat` and supporting APIs with authenticated headers or signed requests.
+- Apply IAM-based role separation for agent runners and supporting services.
+- Integrate Guardrails or similar content filters to keep responses on-policy.
+- Automatic masking of PII before logging or storing conversation data.
+- Move agent prompts and behaviors into database-managed configs so production changes do not require redeploys.
+
 ## License
 Specify your preferred license here before distributing the project.
