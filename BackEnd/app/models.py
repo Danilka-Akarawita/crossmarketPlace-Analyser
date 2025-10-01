@@ -21,7 +21,7 @@ class TechnicalSpecs(BaseModel):
     # Core
     processor_family: Optional[str] = None
     processor_models: Optional[List[str]] = None
-    processor: Optional[str] = None  # fallback (single-line parse)
+    processor: Optional[str] = None  
     
     # Memory
     memory: Optional[str] = None
@@ -131,7 +131,7 @@ class RecommendationRequest(BaseModel):
     budget_max: Optional[float] = None
     preferred_brands: List[Brand] = []
     must_have_specs: Dict[str, Any] = {}
-    preferred_use_case: str  # business, programming, design, etc.
+    preferred_use_case: str  
     min_rating: float = Field(ge=0, le=5, default=3.0)
 
 class RecommendationResponse(BaseModel):

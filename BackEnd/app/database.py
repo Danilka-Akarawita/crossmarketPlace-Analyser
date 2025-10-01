@@ -14,7 +14,7 @@ class MongoDB:
     
     async def connect(self):
         """Connect to MongoDB Atlas"""
-        MONGODB_URL = os.getenv("MONGODB_URL", "mongodb+srv://nishandanilka_db_user:ITZ6uWjjI43UQxqw@cluster0.9mqmldc.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+        MONGODB_URL = os.getenv("MONGODB_URL", "")
         DB_NAME = os.getenv("DB_NAME", "cross-marketplace")
         
         self.client = AsyncIOMotorClient(MONGODB_URL)
@@ -33,12 +33,12 @@ class MongoDB:
         if self.client:
             self.client.close()
 
-# Database instance
+
 mongodb = MongoDB()
 
 if __name__ == "__main__":
     async def test():
-        await mongodb.connect()   # connect and create indexes
-        await mongodb.disconnect()  # close connection
+        await mongodb.connect()   
+        await mongodb.disconnect()  
 
     asyncio.run(test())

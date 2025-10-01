@@ -28,6 +28,7 @@ async def update_interaction_history(session_service, app_name, user_id, session
             entry_with_timestamp.setdefault("timestamp", datetime.utcnow().isoformat())
             history.append(entry_with_timestamp)
 
+            #future we can enhanced with a history summarization
             if len(history) > MAX_HISTORY_ITEMS:
                 history = history[-MAX_HISTORY_ITEMS:]
 

@@ -1,5 +1,8 @@
 import uuid
-from google.adk.sessions.base_session_service import BaseSessionService, ListSessionsResponse
+from google.adk.sessions.base_session_service import (
+    BaseSessionService,
+    ListSessionsResponse,
+)
 from google.adk.sessions.session import Session
 from motor.motor_asyncio import AsyncIOMotorCollection
 from typing import Optional
@@ -22,7 +25,7 @@ class MongoSessionService(BaseSessionService):
             "session_id": session_id,
         }
 
-        session_doc = await self.collection.find_one(query)  # ✅ Async call
+        session_doc = await self.collection.find_one(query)
 
         if session_doc:
             return Session(

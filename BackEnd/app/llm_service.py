@@ -7,19 +7,22 @@ from google.adk.models.lite_llm import LiteLlm
 from google.adk.runners import Runner
 from tools.search_products_tools import search_products_tool
 from langchain.output_parsers import PydanticOutputParser
+
 load_dotenv()
 from typing import List, Optional
 from pydantic import BaseModel
 
+
 class ProductSearchResult(BaseModel):
     answer: str
     quick_questions: List[str]
-    products: Optional[List[dict]] = None  
-
-parser= PydanticOutputParser(pydantic_object=ProductSearchResult)
+    products: Optional[List[dict]] = None
 
 
-base_agent_instruction="""
+parser = PydanticOutputParser(pydantic_object=ProductSearchResult)
+
+
+base_agent_instruction = """
 Role: You are a helpful assistant provide accurate answers for laptop-related queries.
 
 query: {user_query}
@@ -52,6 +55,8 @@ Narrow:
 3.Do not provide any information that is not related to the user's query or context.
 4.Do not provide any answer if the query is not realted to laptops or any laptop accessories.
 """
+
+
 class LLMService:
     def __init__(self):
         api_key = os.getenv("OPENAI_API_KEY")
@@ -89,7 +94,7 @@ class LLMService:
             A string containing the summary.
         """
 
-        prompt=f"""
+        prompt = f"""
         
         context: {text}
         Instructions
@@ -106,7 +111,7 @@ class LLMService:
         """
         print(f"prompt is {prompt}")
         response = self.llm.invoke(prompt)
-        # agenerate returns a list of generations, pick the first one
+
         summary = response.content
         return summary
 
@@ -115,13 +120,13 @@ class LLMService:
         try:
             print("Creating base agent...", app_name)
             print(f"Session service: {session_service}")
-            
+
             model = LiteLlm(
                 model=self._chat_model,
                 temperature=0.3,
                 api_key=self._api_key,
             )
-            
+
             base_agent = LlmAgent(
                 model=model,
                 name="base_agent",

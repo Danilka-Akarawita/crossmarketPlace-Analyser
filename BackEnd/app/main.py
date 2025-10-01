@@ -53,14 +53,13 @@ app.add_middleware(
 )
 
 
-# Dependency injection
 def get_llm_service():
     return LLMService()
 
 
 scheduler = AsyncIOScheduler()
 
-# Background job to refresh Lenovo data
+
 @scheduler.scheduled_job("interval", hours=12)
 async def scheduled_scrape():
     print("⏳ Running scheduled Lenovo scrape...")
@@ -70,6 +69,7 @@ async def scheduled_scrape():
     except Exception as e:
         print(f" Scrape failed: {e}")
 
+
 async def initialize_canonical_data(scheduler: bool = False):
     """Initialize database with canonical PDF specs and scrape live data"""
     pdf_parser = PDFParser()
@@ -78,24 +78,23 @@ async def initialize_canonical_data(scheduler: bool = False):
     try:
 
         scraper = LenovoScraper()
-        scraperHp=HpScraper()
+        scraperHp = HpScraper()
         scraper.setup_driver()
 
         for product_key, pdf_url in CANONICAL_PDFS.items():
-            # Skip if already exists
+
             existing = await mongodb.database.products.find_one({"sku": product_key})
             if existing:
                 continue
 
             try:
-                # Download & parse PDF
+
                 pdf_content = pdf_parser.download_pdf(pdf_url)
                 if "lenovo" in product_key:
                     specs = pdf_parser.parse_lenovo_specs(pdf_content)
                 else:
                     specs = pdf_parser.parse_hp_specs(pdf_content)
 
-                # Default product data
                 product_data = {
                     "brand": "lenovo" if "lenovo" in product_key else "hp",
                     "model": product_key,
@@ -110,15 +109,14 @@ async def initialize_canonical_data(scheduler: bool = False):
                     "source_urls": [pdf_url],
                 }
 
-                # Scrape live data from Lenovo site (only if Lenovo product)
                 if "lenovo" in product_key:
                     print(f"Scraping live data for {product_key}...")
-                    scraped = scraper.search_and_scrape(product_key,scheduler= scheduler)
+                    scraped = scraper.search_and_scrape(
+                        product_key, scheduler=scheduler
+                    )
                     print(f"Scraped data: {scraped}")
-                    review_count_raw = scraped.get("review_count", "0")  # e.g. "(1)"
-                    review_count_clean = int(
-                        re.sub(r"[^\d]", "", review_count_raw)
-                    )  # removes parentheses or other chars
+                    review_count_raw = scraped.get("review_count", "0")
+                    review_count_clean = int(re.sub(r"[^\d]", "", review_count_raw))
 
                     if scraped:
                         product_data.update(
@@ -133,12 +131,12 @@ async def initialize_canonical_data(scheduler: bool = False):
                         print(f"Scraped live data for {product_key}: {scraped}")
                 else:
                     print(f"Scraping live data for {product_key}...")
-                    scraped = scraperHp.search_and_scrape(product_key,scheduler= scheduler)
+                    scraped = scraperHp.search_and_scrape(
+                        product_key, scheduler=scheduler
+                    )
                     print(f"Scraped data: {scraped}")
-                    review_count_raw = scraped.get("review_count", "0")  # e.g. "(1)"
-                    review_count_clean = int(
-                        re.sub(r"[^\d]", "", review_count_raw)
-                    )  # removes parentheses or other chars
+                    review_count_raw = scraped.get("review_count", "0")
+                    review_count_clean = int(re.sub(r"[^\d]", "", review_count_raw))
 
                     if scraped:
                         product_data.update(
@@ -152,7 +150,6 @@ async def initialize_canonical_data(scheduler: bool = False):
                         )
                         print(f"Scraped live data for {product_key}: {scraped}")
 
-                # Embed text with LLM if needed
                 llm_service = get_llm_service()
                 await save_product_with_embedding(product_data, llm_service)
 
@@ -187,9 +184,6 @@ async def save_product_with_embedding(product_data: dict, llm_service: LLMServic
     embedding = await llm_service.get_embedding(text_to_embed)
     product_data["embedding"] = embedding
     await mongodb.database.products.insert_one(product_data)
-
-
-# API Endpoints
 
 
 @app.get("/")
@@ -235,8 +229,8 @@ async def get_products(
     if min_rating is not None:
         query["average_rating"] = {"$gte": min_rating}
 
-    cursor = mongodb.database.products.find(query).skip(skip).limit(limit)
-    products = await cursor.to_list(length=limit)
+    data = mongodb.database.products.find(query).skip(skip).limit(limit)
+    products = await data.to_list(length=limit)
     return products
 
 
@@ -278,7 +272,6 @@ async def search_products(request: SearchRequest):
     ]
     llm_service = get_llm_service()
 
-    # Apply price range filter if provided
     price_filter = {}
     if request.min_price is not None:
         price_filter["$gte"] = request.min_price
@@ -287,18 +280,15 @@ async def search_products(request: SearchRequest):
     if price_filter:
         pipeline.append({"$match": {"current_price": price_filter}})
 
-    # Exclude _id and embedding fields
     pipeline.append({"$project": {"_id": 0, "embedding": 0}})
 
-    # Limit results
     pipeline.append({"$limit": request.limit or 10})
 
-    # Run aggregation
-    cursor = mongodb.database.products.aggregate(pipeline)
-    print("curser",cursor)
-    results = await cursor.to_list(length=request.limit or 10)
-    print("results",results)
-    # Normalize technical_specs
+    data = mongodb.database.products.aggregate(pipeline)
+    print("curser", data)
+    results = await data.to_list(length=request.limit or 10)
+    print("results", results)
+
     for doc in results:
         specs = doc.get("technical_specs", {})
         for field in ["weight", "memory", "processor"]:
@@ -345,7 +335,6 @@ async def process_query(request: QueryRequest = Body(...)):
         session_service = MongoSessionService(collection=session_collection)
         APP_NAME = "LaptopIntelligence"
 
-    
         try:
             llm_service = get_llm_service()
             adk_runner = llm_service.create_base_agent(APP_NAME, session_service)
@@ -386,9 +375,9 @@ async def process_query(request: QueryRequest = Body(...)):
                     "current_date": current_date,
                     "price_range": {},
                     "context": "",
-                    "session_id":session_id,
-                    "user_id":request.user_id,
-                    "app_name":APP_NAME
+                    "session_id": session_id,
+                    "user_id": request.user_id,
+                    "app_name": APP_NAME,
                 },
             )
 
@@ -404,7 +393,6 @@ async def process_query(request: QueryRequest = Body(...)):
                 {
                     "user_query": query_text,
                     "current_date": current_date,
-                    
                 }
             )
 
@@ -452,9 +440,3 @@ async def process_query(request: QueryRequest = Body(...)):
         return JSONResponse(
             status_code=500, content={"detail": f"Internal Server Error: {str(e)}"}
         )
-
-
-@app.options("/chat")
-async def chat_preflight_handler():
-    """Handle CORS preflight requests for the chat endpoint."""
-    return JSONResponse(status_code=200, content={"ok": True})

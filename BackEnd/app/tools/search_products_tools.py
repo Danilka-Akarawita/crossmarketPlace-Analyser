@@ -4,13 +4,11 @@ from google.adk.tools import FunctionTool
 from utils import update_interaction_history
 from services import MongoSessionService
 
-# Assuming mongodb and get_llm_service are already imported in your app
-# from your existing search endpoint file
+
 from database import mongodb
 
 
 def get_llm_service():
-    # Import inside the function to avoid a circular import with llm_service.
     from llm_service import LLMService
 
     return LLMService()
@@ -21,17 +19,18 @@ def replace_none_with_missing(data: dict) -> dict:
     print("Original data:", data)
     processed_data = {}
     for k, v in data.items():
-        if v is None:  # skip entirely instead of overwriting
+        if v is None:
             continue
         processed_data[k] = v if v is not None else "Value is Missing"
     print("Processed data:", processed_data)
     return processed_data
 
+
 async def search_products_tool_function(
     query: str,
     app_name: str,
-    user_id: str ,
-    session_id: str ,
+    user_id: str,
+    session_id: str,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
 ) -> dict:
@@ -56,22 +55,26 @@ async def search_products_tool_function(
             "user_id": user_id,
             "session_id": session_id,
         }
-        db= mongodb.database
+        db = mongodb.database
         session_collection = db["ChatSessions"]
         session_service = MongoSessionService(collection=session_collection)
-        print("session id ,",session_id,user_id,app_name)
+        print("session id ,", session_id, user_id, app_name)
         current_session = await session_service.get_session(
             app_name=app_name, user_id=user_id, session_id=session_id
         )
         if current_session is None:
             print("session not found error")
             return "Session not found."
-        
-        missing = [name for name, value in required_fields.items() if value in (None, "")]
+
+        missing = [
+            name for name, value in required_fields.items() if value in (None, "")
+        ]
         if missing:
             raise ValueError(f"Missing required parameter(s): {', '.join(missing)}")
 
-        print(f"[Utils] Searching products with query: {query}, min_price: {min_price}, max_price: {max_price}")
+        print(
+            f"[Utils] Searching products with query: {query}, min_price: {min_price}, max_price: {max_price}"
+        )
         pipeline = [
             # {
             #     "$search": {
@@ -80,8 +83,8 @@ async def search_products_tool_function(
             #     }
             # }
         ]
-        print("price arnge ",min_price,max_price)
-        # price filtering if provided
+        print("price arnge ", min_price, max_price)
+
         price_filter = {}
         if min_price is not None:
             price_filter["$gte"] = float(min_price)
@@ -91,16 +94,12 @@ async def search_products_tool_function(
         if price_filter:
             pipeline.append({"$match": {"current_price": price_filter}})
 
-
-        # project and limit
         pipeline.append({"$project": {"_id": 0, "embedding": 0}})
-        pipeline.append({"$limit":  10})
+        pipeline.append({"$limit": 10})
 
-        # run aggregation
         cursor = mongodb.database.products.aggregate(pipeline)
-        results = await cursor.to_list(length= 10)
+        results = await cursor.to_list(length=10)
 
-        # normalize specs (same logic as before)
         for doc in results:
             specs = doc.get("technical_specs", {})
             for field in ["weight", "memory", "processor"]:
@@ -108,34 +107,21 @@ async def search_products_tool_function(
                     specs[field] = specs[field][0]
             doc["technical_specs"] = specs
 
-        # get summary from LLM
         llm_service = get_llm_service()
         raw_data = json.dumps(results, indent=2)
-        print("raw data",raw_data)
+        print("raw data", raw_data)
         summary = await llm_service.summarize_text(raw_data)
-        
-        
 
         print("summary:", summary)
-        print(
-            "Updating price range in session state for user_id:")
+        print("Updating price range in session state for user_id:")
 
-        # Prepare updates: replace None with 'Value is Missing'
-        
-
-        current_price_range_details = current_session.state.get(
-            "price_range", {}
-        )
+        current_price_range_details = current_session.state.get("price_range", {})
         print("Current price_range details:", current_price_range_details)
 
         updates_dict = replace_none_with_missing(
-            {
-                "min_price": min_price,
-                "max_price": max_price
-            }
+            {"min_price": min_price, "max_price": max_price}
         )
 
-        # Merge with existing reservation details
         merged_price_details = {**current_price_range_details, **updates_dict}
 
         print("Merged price_range details:", merged_price_details)
@@ -148,7 +134,7 @@ async def search_products_tool_function(
             price_range=merged_price_details,
             context=summary,
         )
-        
+
         print("Interaction history updated successfully.")
 
         return summary
@@ -156,5 +142,6 @@ async def search_products_tool_function(
     except Exception as e:
         print(f"[Utils Error] Failed to search products: {e}")
         return {"error": f"[Utils Error] Failed to search products: {e}"}
+
 
 search_products_tool = FunctionTool(func=search_products_tool_function)

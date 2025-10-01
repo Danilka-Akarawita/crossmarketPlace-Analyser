@@ -10,6 +10,7 @@ from models import AvailabilityStatus
 import time
 import re
 
+
 class BaseScraper:
     def __init__(self):
         self.driver = None
@@ -19,7 +20,7 @@ class BaseScraper:
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
-        # chrome_options.add_argument("--headless")  # 
+        # chrome_options.add_argument("--headless")  #
         self.driver = webdriver.Chrome(options=chrome_options)
 
     def close_driver(self):
@@ -33,17 +34,16 @@ class HpScraper(BaseScraper):
     def search_and_scrape(self, model_name: str, scheduler: bool) -> Optional[Dict]:
         self.driver.get(self.BASE_URL)
 
-        # Wait for search input
         search_box = WebDriverWait(self.driver, 15).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "input[name='s']"))
         )
 
-        # Optional: set category to "laptop"
         try:
             category_dropdown = WebDriverWait(self.driver, 5).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "select[name='term']"))
             )
             from selenium.webdriver.support.ui import Select
+
             Select(category_dropdown).select_by_value("laptop")
         except:
             pass
@@ -51,7 +51,7 @@ class HpScraper(BaseScraper):
         # Type model name
         search_box.clear()
         search_box.send_keys(model_name)
-        search_box.send_keys(u'\ue007')
+        search_box.send_keys("\ue007")
 
         # Click search button instead of hitting Enter
         # submit_button = WebDriverWait(self.driver, 5).until(
@@ -61,7 +61,9 @@ class HpScraper(BaseScraper):
 
         try:
             first_product = WebDriverWait(self.driver, 20).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, ".products section.product a"))
+                EC.element_to_be_clickable(
+                    (By.CSS_SELECTOR, ".products section.product a")
+                )
             )
             url = first_product.get_attribute("href")
             self.driver.get(url)
@@ -76,9 +78,6 @@ class HpScraper(BaseScraper):
             print("No products found for model:", model_name, e)
             return None
 
-
-
-
     def scrape_product_page(self) -> Dict:
         soup = BeautifulSoup(self.driver.page_source, "html.parser")
 
@@ -90,21 +89,27 @@ class HpScraper(BaseScraper):
 
         # Price
         try:
-            raw_price = soup.select_one("p.price span.woocommerce-Price-amount").get_text(strip=True)
+            raw_price = soup.select_one(
+                "p.price span.woocommerce-Price-amount"
+            ).get_text(strip=True)
             price = self.clean_price(raw_price)
         except:
             price = None
 
-        # Discount (if available)
         try:
-            discount = soup.select_one("p.price del .woocommerce-Price-amount").get_text(strip=True)
+            discount = soup.select_one(
+                "p.price del .woocommerce-Price-amount"
+            ).get_text(strip=True)
         except:
             discount = None
 
         # Stock availability
         try:
             stock_status = soup.select_one("p.stock, .availability")
-            if stock_status and "out of stock" in stock_status.get_text(strip=True).lower():
+            if (
+                stock_status
+                and "out of stock" in stock_status.get_text(strip=True).lower()
+            ):
                 availability = AvailabilityStatus.OUT_OF_STOCK.value
             else:
                 availability = AvailabilityStatus.IN_STOCK.value
@@ -114,7 +119,9 @@ class HpScraper(BaseScraper):
         # Specs (from short description <ul><li>)
         specs = {}
         try:
-            short_desc = soup.select_one("div.woocommerce-product-details__short-description ul")
+            short_desc = soup.select_one(
+                "div.woocommerce-product-details__short-description ul"
+            )
             if short_desc:
                 for li in short_desc.find_all("li"):
                     text = li.get_text(" ", strip=True)
@@ -146,7 +153,7 @@ class HpScraper(BaseScraper):
             "images": images,
         }
 
-    def clean_price(self,price_str: str) -> float:
+    def clean_price(self, price_str: str) -> float:
         if not price_str:
             return None
         cleaned = re.sub(r"[^\d.]", "", price_str)
@@ -154,25 +161,32 @@ class HpScraper(BaseScraper):
             return float(cleaned)
         except ValueError:
             return None
-        
+
     def scrape_price_and_reviews(self) -> Dict:
         """Light scrape: only price, discount, stock"""
         soup = BeautifulSoup(self.driver.page_source, "html.parser")
 
         try:
-            raw_price = soup.select_one("p.price span.woocommerce-Price-amount").get_text(strip=True)
+            raw_price = soup.select_one(
+                "p.price span.woocommerce-Price-amount"
+            ).get_text(strip=True)
             price = self.clean_price(raw_price)
         except:
             price = None
 
         try:
-            discount = soup.select_one("p.price del .woocommerce-Price-amount").get_text(strip=True)
+            discount = soup.select_one(
+                "p.price del .woocommerce-Price-amount"
+            ).get_text(strip=True)
         except:
             discount = None
 
         try:
             stock_status = soup.select_one("p.stock")
-            if stock_status and "out of stock" in stock_status.get_text(strip=True).lower():
+            if (
+                stock_status
+                and "out of stock" in stock_status.get_text(strip=True).lower()
+            ):
                 availability = AvailabilityStatus.OUT_OF_STOCK.value
             else:
                 availability = AvailabilityStatus.IN_STOCK.value
@@ -186,24 +200,27 @@ class HpScraper(BaseScraper):
         }
 
 
-
 class LenovoScraper(BaseScraper):
     BASE_URL = "https://www.lenovo.com"
 
-    def search_and_scrape(self, model_name: str,scheduler: bool) -> Optional[Dict]:
+    def search_and_scrape(self, model_name: str, scheduler: bool) -> Optional[Dict]:
         self.driver.get(f"{self.BASE_URL}/us/en")
-        
+
         # Wait for search box
         search_box = WebDriverWait(self.driver, 15).until(
             EC.presence_of_element_located((By.ID, "commonHeaderSearch"))
         )
         search_box.clear()
         search_box.send_keys(model_name)
-        search_box.send_keys(u'\ue007')  # Press Enter
+        search_box.send_keys("\ue007")  # Press Enter
 
         # Wait for first product
         try:
-            first_product = WebDriverWait(self.driver, 20).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "li.product_item .product_title a")))
+            first_product = WebDriverWait(self.driver, 20).until(
+                EC.element_to_be_clickable(
+                    (By.CSS_SELECTOR, "li.product_item .product_title a")
+                )
+            )
             url = first_product.get_attribute("href")
             self.driver.get(url)
             print("Navigating to:", url)
@@ -229,7 +246,7 @@ class LenovoScraper(BaseScraper):
         # Price
         try:
             price_span = soup.find("span", class_="price")
-            price=price_span.text.strip()
+            price = price_span.text.strip()
             discount_span = soup.find("span", class_="price-save-mt")
             discount = discount_span.text.strip() if discount_span else None
         except:
@@ -237,13 +254,17 @@ class LenovoScraper(BaseScraper):
 
         # Rating
         try:
-            rating = soup.select_one(".card-review-inline .bv_text").get_text(strip=True)
+            rating = soup.select_one(".card-review-inline .bv_text").get_text(
+                strip=True
+            )
         except:
             rating = None
 
         # Review count
         try:
-            review_count = soup.select_one(".card-review-inline .bv_numReviews_component_container .bv_text").get_text(strip=True)
+            review_count = soup.select_one(
+                ".card-review-inline .bv_numReviews_component_container .bv_text"
+            ).get_text(strip=True)
         except:
             review_count = None
 
@@ -260,7 +281,7 @@ class LenovoScraper(BaseScraper):
             stock_button = soup.select_one("button.buyNowBtn, button.outOfStock")
             if stock_button and "out of stock" in stock_button.text.lower():
                 availability = AvailabilityStatus.OUT_OF_STOCK.value
-                
+
             else:
                 availability = AvailabilityStatus.IN_STOCK.value
         except:
@@ -272,15 +293,14 @@ class LenovoScraper(BaseScraper):
             "rating": rating,
             "review_count": review_count,
             "specs": specs,
-            "in_stock": availability
+            "in_stock": availability,
         }
-    
+
     def scrape_price_and_reviews(self) -> Dict:
         """Light scrape: only price, discount, rating, review count, availability."""
         time.sleep(2)  # let JS load
         soup = BeautifulSoup(self.driver.page_source, "html.parser")
 
-      
         try:
             price_span = soup.find("span", class_="price")
             price = price_span.text.strip() if price_span else None
@@ -291,7 +311,9 @@ class LenovoScraper(BaseScraper):
 
         # Rating + reviews
         try:
-            rating = soup.select_one(".card-review-inline .bv_text").get_text(strip=True)
+            rating = soup.select_one(".card-review-inline .bv_text").get_text(
+                strip=True
+            )
         except:
             rating = None
         try:
