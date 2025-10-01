@@ -20,6 +20,15 @@ Once the dev server is up, visit http://localhost:3000 and start chatting. The f
 - Clear surface for backend errors and the active API endpoint
 - No authentication required—ideal for demos or internal tooling
 
+## Backend capabilities
+
+The FastAPI service that powers this UI provides:
+
+- Session-aware chat powered by Google ADK tool kit, persisting interaction history, context, and price range per user.
+- `/chat` endpoint that routes queries through the base agent and optional tools like `search_products_tool` for laptop lookups within price constraints.
+- Product catalogue seeded from canonical PDFs and Lenovo scraping, exposed through `/products` and `/search` for future UI surfaces.
+- MongoDB persistence with automatic indexing and scheduled refresh jobs to keep Lenovo data fresh.
+
 ## Configuration
 
 - `NEXT_PUBLIC_BACKEND_URL`: base URL of the FastAPI service (default `http://localhost:8000`).
